@@ -59,7 +59,6 @@ const moodCmd      = require('./commands/mood');
 const triviaCmd    = require('./commands/trivia');
 const wordleCmd    = require('./commands/wordle');
 const akinatorCmd  = require('./commands/akinator');
-const dungeonCmd   = require('./commands/dungeon');
 const portoCmd     = require('./commands/portofolio');
 const perkiraanCmd = require('./commands/prakiraan');
 const bgToolsCmd   = require('./commands/bgtools');
@@ -552,7 +551,6 @@ async function startBot() {
             await triviaCmd(command, args, msg, user, db, body).catch(e => console.error("Error Trivia:", e.message));
             await wordleCmd(command, args, msg, user, db).catch(e => console.error("Error Wordle:", e.message));
             await akinatorCmd(command, args, msg, user, db).catch(e => console.error("Error Akinator:", e.message));
-            await dungeonCmd(command, args, msg, user, db).catch(e => console.error("Error Dungeon:", e.message));
             await portoCmd(command, args, msg, user, db).catch(e => console.error("Error Porto:", e.message));
             await perkiraanCmd(command, args, msg, user, db).catch(e => console.error("Error Prakiraan:", e.message));
             await bgToolsCmd(command, args, msg, user, db, sock, m).catch(e => console.error("Error BGTools:", e.message));
@@ -1815,18 +1813,46 @@ ${'─'.repeat(30)}
 🔊 *SUARA*
 • !tts <teks>         → Text-to-Speech (teks jadi audio)
 
-🕵️ *STEGANOGRAFI — PESAN TERSEMBUNYI*
-• !hide <pesan>       → Sembunyikan teks di dalam gambar
-  └ Cara: kirim/reply gambar + caption *!hide pesan kamu*
-• !reveal             → Bongkar pesan tersembunyi dari gambar
-  └ Cara: reply gambar yang berisi pesan tersembunyi
-
 🕰️ *TIME MACHINE — ARSIP CHAT*
 • !timemachine        → Buka arsip chat random masa lalu
 • !flashback          → Kenangan chat pada jam ini di masa lalu
 • !dejavu             → Sama seperti !flashback
 • !timemachine <kode> → Navigasi (maju/mundur 1 jam)
   _(Kode didapat dari hasil !timemachine sebelumnya)_
+
+🛠️ *TOOLS:*
+• !summarize <link/teks>   → Ringkas artikel AI
+• !translate <bhs> <teks>  → Terjemah AI
+• !ocr                     → Baca teks dari gambar
+• !short <url>             → Persingkat link
+• !unshort <url>           → Reveal link asli
+• !bg                      → Hapus background foto
+• !compress [kualitas]     → Kompres foto
+• !enhance                 → Perjelas foto otomatis
+• !cuaca <kota>            → Cuaca + kualitas udara
+• !prakiraan <kota>        → Prakiraan 5 hari
+• !kurspro                 → Kurs lengkap real-time
+• !porto                   → Tracker investasi
+
+🎮 *GAME:*
+• !trivia [kategori]       → Kuis berhadiah koin
+• !wordle                  → Tebak kata 5 huruf
+• !akinator                → Tebak karakter AI
+
+🎨 *HIBURAN BARU:*
+• !zodiak <tgl/nama>       → Horoskop harian AI
+• !cocokan <z1> <z2>       → Cek kecocokan zodiak
+• !shio <tahun>            → Shio kamu
+• !cerita <tema>           → AI Story interaktif
+• !lirik <judul artis>     → Info lirik lagu
+• !meme <template>|<teks>  → Buat meme
+• !voice <teks>            → Text to voice
+
+📊 *TRACKING:*
+• !mood <kata/emoji>       → Log mood harian
+• !moodstat                → Grafik mood kamu
+• !statbot                 → Status bot
+• !topcmd                  → Command terpopuler
 
 🆔 *UTILITAS*
 • !id / !cekid        → Cek JID lengkap kamu & grup
@@ -1890,17 +1916,3 @@ async function handleExit(signal) {
 // Tangkap sinyal mematikan dari Koyeb/Terminal
 process.on('SIGINT', () => handleExit('SIGINT'));
 process.on('SIGTERM', () => handleExit('SIGTERM'));
-
-
-
-
-
-
-
-
-
-
-
-
-
-
