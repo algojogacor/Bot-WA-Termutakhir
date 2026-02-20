@@ -1,9 +1,9 @@
 /**
  * ╔══════════════════════════════════════════════════════════════╗
- * ║              AKINATOR AI — Fitur 11                         ║
- * ║  !akinator   — Mulai permainan Akinator                     ║
- * ║  !ya / !tidak / !mungkin / !tidaktahu — Jawab pertanyaan   ║
- * ║  !akinatorberhenti — Stop game                             ║
+ * ║              AKINATOR AI — Fitur 11                          ║
+ * ║  !akinator   — Mulai permainan Akinator                      ║
+ * ║  !ya / !tidak / !mungkin / !tidaktahu — Jawab pertanyaan     ║
+ * ║  !akinatorberhenti — Stop game                               ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
@@ -21,43 +21,52 @@ const client = new OpenAI({
 });
 
 // ─── Sesi Akinator ────────────────────────────────────────────
-const sesiAkinator = new Map(); // userId -> { pertanyaan, jawaban, pertanyaanKe, selesai }
+const sesiAkinator = new Map(); // userId -> { pertanyaan, jawaban, pertanyaanKe, selesai, status, batasPertanyaan, tebakanSementara }
 
 // ─── Tanya AI untuk pertanyaan berikutnya ─────────────────────
 async function generatePertanyaan(riwayat) {
-    const systemPrompt = `Kamu adalah Akinator, permainan tebak karakter/tokoh/benda. 
-Tugasmu adalah menebak karakter/tokoh/benda yang dipikirkan user melalui serangkaian pertanyaan ya/tidak.
-Pertanyaan harus cerdas, efisien, dan mempersempit kemungkinan secara cepat.
+    const systemPrompt = `Kamu adalah Akinator tingkat dewa, pakar permainan tebak tokoh (nyata/fiksi), pahlawan, ilmuwan, hewan, atau benda.
+Tugasmu: Menebak apa yang dipikirkan user dengan pertanyaan Ya/Tidak seefisien mungkin.
 
-Format respons HARUS JSON seperti ini:
+STRATEGI BERTANYA (Sangat Penting):
+1. Mulai dari spektrum sangat luas (Nyata/Fiksi? Manusia/Bukan? Hidup/Mati?).
+2. Gunakan metode eliminasi separuh (binary search). Jangan menebak hal spesifik terlalu awal.
+3. Kerucutkan berdasarkan era, bidang keahlian, asal negara, gender, dll.
+4. Analisis riwayat jawaban user secara logis untuk menyingkirkan kandidat yang tidak mungkin.
+
+FORMAT RESPONS WAJIB JSON DENGAN STRUKTUR BERIKUT:
 {
-  "pertanyaan": "Pertanyaan ya/tidak yang informatif",
-  "tebakan": null OR "nama karakter jika yakin (>80%)",
-  "alasan": "alasan singkat mengapa kamu yakin atau belum" 
+  "pemikiran_internal": "Tuliskan 3 kandidat terkuat saat ini berdasarkan riwayat jawaban, dan jelaskan mengapa kamu memilih pertanyaan selanjutnya.",
+  "pertanyaan": "Pertanyaanmu selanjutnya (wajib bisa dijawab Ya/Tidak)",
+  "tebakan_final": null, 
+  "alasan_tebakan": "Alasan tebakanmu (isi jika tebakan_final tidak null)"
 }
 
-Aturan:
-- Tanya hal yang general dulu (manusia/tokoh fiksi/benda? nyata/fiksi? hidup/sudah meninggal? dll)
-- Lalu mempersempit (bidang, era, kebangsaan, dll)
-- Setelah 10 pertanyaan, HARUS memberikan tebakan
-- Jangan tanya pertanyaan yang sudah ditanya
-- Gunakan Bahasa Indonesia
-- Format respons harus valid JSON, tidak ada teks lain`;
+PANTANGAN:
+- Jangan pernah memberikan teks atau sapaan di luar format JSON.
+- Jangan mengulang pertanyaan yang maknanya sama dengan riwayat sebelumnya.`;
 
     const messages = [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Riwayat tanya-jawab sejauh ini:\n${riwayat}\n\nBerikan pertanyaan berikutnya atau tebakan dalam format JSON.` }
+        { role: 'user', content: `Riwayat tanya-jawab sejauh ini:\n${riwayat}\n\nBerikan pemikiran, pertanyaan berikutnya, atau tebakan dalam format JSON yang valid.` }
     ];
 
     const response = await client.chat.completions.create({
         model: 'google/gemini-2.5-flash',
         messages,
-        max_tokens: 500
+        max_tokens: 800,
+        temperature: 0.3 // Temperature rendah agar logikanya konsisten dan tidak melantur
     });
 
-    const text = response.choices[0]?.message?.content || '{}';
-    const cleaned = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(cleaned);
+    let text = response.choices[0]?.message?.content || '{}';
+    
+    // Pembersih JSON yang lebih tangguh (menghindari error jika AI ngelantur)
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+        text = match[0];
+    }
+    
+    return JSON.parse(text);
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -91,7 +100,10 @@ module.exports = async (command, args, msg, user, db) => {
                 pertanyaanKe: 1,
                 riwayat: [],
                 currentQ: awal.pertanyaan,
-                selesai: false
+                selesai: false,
+                status: 'bertanya', // <-- Status awal
+                batasPertanyaan: 20, // <-- Batas default sebelum menebak paksa
+                tebakanSementara: ''
             });
 
             return msg.reply(
@@ -118,6 +130,40 @@ module.exports = async (command, args, msg, user, db) => {
         const sesi = sesiAkinator.get(userId);
         if (sesi.selesai) return;
 
+        // --- 1. LOGIKA JIKA AKINATOR SEDANG MENUNGGU KONFIRMASI TEBAKAN ---
+        if (sesi.status === 'menebak') {
+            if (command === 'ya') {
+                sesiAkinator.delete(userId);
+                return msg.reply('🎉 *YAY! AKU BENAR!*\nAkinator memang tidak pernah salah (terlalu sering)!\n\nMain lagi? Ketik `!akinator`');
+            } else if (command === 'tidak') {
+                // Akinator salah, ubah status ke bertanya dan tambah jatah 5 pertanyaan
+                sesi.status = 'bertanya';
+                sesi.batasPertanyaan += 5; 
+                sesi.riwayat.push(`Tebakan Akinator: "${sesi.tebakanSementara}" → Jawaban User: SALAH! Tebakan ini keliru, cari kandidat lain.`);
+                
+                await msg.reply(`Ternyata bukan ya... Hmm, oke beri aku tambahan 5 pertanyaan lagi untuk berpikir! 💭`);
+                
+                // Panggil AI lagi untuk dapat pertanyaan baru berdasarkan riwayat yang gagal
+                try {
+                    const riwayatStr = sesi.riwayat.join('\n');
+                    const hasil = await generatePertanyaan(riwayatStr);
+                    sesi.currentQ = hasil.pertanyaan;
+                    
+                    return msg.reply(
+                        `🧞 *AKINATOR — Pertanyaan ${sesi.pertanyaanKe}*\n\n` +
+                        `❓ *${hasil.pertanyaan}*\n\n` +
+                        `✅ \`!ya\`  |  ❌ \`!tidak\`  |  🤔 \`!mungkin\`  |  ❓ \`!tidaktahu\``
+                    );
+                } catch (e) {
+                    sesiAkinator.delete(userId);
+                    return msg.reply('❌ Terjadi error saat memuat pertanyaan baru. Game dihentikan.');
+                }
+            } else {
+                return msg.reply('⚠️ Jawab tebakanku dengan `!ya` atau `!tidak` saja ya!');
+            }
+        }
+
+        // --- 2. LOGIKA JIKA AKINATOR SEDANG BERTANYA BIASA ---
         const jawabanMap = {
             'ya': 'Ya',
             'tidak': 'Tidak',
@@ -136,26 +182,24 @@ module.exports = async (command, args, msg, user, db) => {
             const riwayatStr = sesi.riwayat.join('\n');
             const hasil = await generatePertanyaan(riwayatStr);
 
-            // Jika ada tebakan
-            if (hasil.tebakan || sesi.pertanyaanKe > 15) {
-                sesi.selesai = true;
-                sesiAkinator.delete(userId);
-
-                const tebakan = hasil.tebakan || 'Tidak berhasil menebak';
+            // Jika AI sudah punya tebakan final atau batas pertanyaan habis
+            if (hasil.tebakan_final || sesi.pertanyaanKe > sesi.batasPertanyaan) {
+                sesi.status = 'menebak';
+                sesi.tebakanSementara = hasil.tebakan_final || 'Aku benar-benar kebingungan...';
+                
                 return msg.reply(
                     `🧞 *AKINATOR PUNYA TEBAKAN!*\n` +
                     `${'─'.repeat(30)}\n\n` +
                     `Setelah *${sesi.pertanyaanKe - 1} pertanyaan*...\n\n` +
                     `🎯 Apakah yang kamu pikirkan adalah:\n\n` +
-                    `✨ *${tebakan.toUpperCase()}* ✨\n\n` +
-                    `_${hasil.alasan || ''}_\n\n` +
+                    `✨ *${sesi.tebakanSementara.toUpperCase()}* ✨\n\n` +
+                    `_${hasil.alasan_tebakan || 'Aku yakin ini jawaban yang benar berdasarkan ciri-cirinya.'}_\n\n` +
                     `${'─'.repeat(25)}\n` +
-                    `Benar? Ketik \`!ya\` atau \`!tidak\`.\n` +
-                    `Main lagi? Ketik \`!akinator\``
+                    `Benar? Ketik \`!ya\` atau \`!tidak\`.`
                 );
             }
 
-            // Lanjut pertanyaan
+            // Lanjut nanya kalau belum ada tebakan
             sesi.currentQ = hasil.pertanyaan;
 
             return msg.reply(
@@ -170,7 +214,9 @@ module.exports = async (command, args, msg, user, db) => {
         }
     }
 
+    // ══════════════════════════════════════════════════════════
     // !akinatorberhenti
+    // ══════════════════════════════════════════════════════════
     if (command === 'akinatorberhenti' || command === 'akiberhenti') {
         if (!sesiAkinator.has(userId)) return msg.reply('❌ Tidak ada game Akinator aktif.');
         sesiAkinator.delete(userId);
