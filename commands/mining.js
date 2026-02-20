@@ -360,26 +360,49 @@ module.exports = async (command, args, msg, user, db, sock) => {
     // ⚔️ HACK
     // ============================================================
     if (command === 'hack') {
-        if (!args[0]) return msg.reply("Tag user! `!hack @user`");
-        const targetNumber = args[0].replace(/[^0-9]/g, '');
-        const targetId = targetNumber + "@s.whatsapp.net";
+        // Ambil target dari mentionedJid (cara yang benar untuk @mention di WhatsApp)
+        const mentions = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid 
+                      || msg.mentionedIds 
+                      || [];
+        
+        // Fallback: coba parse dari args jika tidak ada mention
+        let targetId = mentions[0];
+        if (!targetId && args[0]) {
+            const targetNumber = args[0].replace(/[^0-9]/g, '');
+            if (targetNumber) targetId = targetNumber + "@s.whatsapp.net";
+        }
+
+        if (!targetId) return msg.reply("❌ Tag user dulu! Contoh: `!hack @user`");
+        
+        // Cegah hack diri sendiri
+        const senderId = msg.author || msg.sender;
+        if (targetId === senderId) return msg.reply("❌ Gak bisa hack diri sendiri!");
+
         const targetUser = db.users[targetId];
 
-        if (!targetUser || !targetUser.mining || targetUser.mining.totalHash === 0) return msg.reply("❌ Target bukan miner.");
-        if (targetUser.mining.upgrades.firewall) return msg.reply("🛡️ Gagal! Target punya Firewall.");
+        if (!targetUser) return msg.reply("❌ User tidak ditemukan di database.");
+        if (!targetUser.mining || (targetUser.mining.totalHash === 0 && (!targetUser.mining.racks || targetUser.mining.racks.length === 0))) return msg.reply("❌ Target bukan miner aktif.");
+        
+        // Pastikan target punya data crypto
+        if (!targetUser.crypto) targetUser.crypto = { btc: 0 };
+        
+        if (targetUser.mining?.upgrades?.firewall) return msg.reply("🛡️ *GAGAL!* Target punya Anti-Hack Firewall. Serangan ditangkis!");
 
-        if (Math.random() < 0.4) {
-            const steal = (targetUser.crypto.btc || 0) * 0.05;
-            if (steal <= 0) return msg.reply("❌ Wallet target kosong.");
-            targetUser.crypto.btc -= steal;
+        const successRate = 0.4; // 40% chance sukses
+        if (Math.random() < successRate) {
+            const targetBTC = targetUser.crypto.btc || 0;
+            if (targetBTC <= 0) return msg.reply("❌ Wallet target kosong, gak ada yang bisa dicuri.");
+            
+            const steal = targetBTC * 0.05;
+            targetUser.crypto.btc = targetBTC - steal;
             user.crypto.btc = (user.crypto.btc || 0) + steal;
             saveDB(db);
-            return msg.reply(`✅ *BERHASIL!* Mencuri ${steal.toFixed(8)} BTC.`);
+            return msg.reply(`💻 *HACK BERHASIL!*\n🎯 Target: @${targetId.split('@')[0]}\n💰 BTC Dicuri: ${steal.toFixed(8)} BTC\n\n_"Kejahatan tidak selalu dihukum... kadang."_`, null, { mentions: [targetId] });
         } else {
             const fine = 500000;
-            user.balance = Math.max(0, user.balance - fine);
+            user.balance = Math.max(0, (user.balance || 0) - fine);
             saveDB(db);
-            return msg.reply(`🚨 *GAGAL!* Denda Rp ${fmt(fine)}.`);
+            return msg.reply(`🚨 *HACK GAGAL!*\n👮 Polisi Siber mendeteksi aktivitasmu!\n💸 Denda: Rp ${fmt(fine)}`);
         }
     }
 
