@@ -225,10 +225,18 @@ module.exports = async (command, args, msg, user, db) => {
             user.wordleStat.menang++;
             user.wordleStat.streak++;
             user.wordleStat.gamesPlayed++;
-            if (user.wordleStat.streak > user.wordleStat.bestStreak) {
+if (user.wordleStat.streak > user.wordleStat.bestStreak) {
                 user.wordleStat.bestStreak = user.wordleStat.streak;
             }
-            const hadiah = Math.max(500 - (sesi.attempts.length - 1) * 75, 50);
+            
+            // --- SISTEM HADIAH BARU (5 Juta - 15 Juta) ---
+            // Hadiah maksimal (15jt) jika tebak benar di percobaan ke-1.
+            // Hadiah berkurang 2 Juta setiap kali tebakan salah.
+            // Hadiah minimal (5jt) jika baru benar di percobaan ke-6.
+            const hadiahMaksimal = 15000000;
+            const penguranganPerSalah = 2000000;
+            const hadiah = Math.max(hadiahMaksimal - (sesi.attempts.length - 1) * penguranganPerSalah, 5000000);
+            
             user.balance = (user.balance || 0) + hadiah;
             saveDB(db);
 
