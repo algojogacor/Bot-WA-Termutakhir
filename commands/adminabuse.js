@@ -1,30 +1,91 @@
 // ============================================================
-//  🎉 ADMIN ABUSE EVENT SYSTEM  v2.1
+//  🎉 ADMIN ABUSE EVENT SYSTEM  v2.2
 //  - Otomatis aktif di SEMUA grup whitelist sekaligus
 //  - Hanya admin grup ATAU owner bot yang bisa trigger
 //  - Trigger: !adminabuseon / !adminabuseoff
 //  - Duration: 30 menit, ganti event tiap 1 menit otomatis
 //  - 10 Event Random: Ekonomi, Mining, Farming, Game, Kompetisi
+//  - Hadiah disesuaikan ekonomi 3 Miliar
+//  - Meteor / Tebak / Balapan: auto-restart setelah ada pemenang
 // ============================================================
 
 const { saveDB } = require('../helpers/database');
 const fmt = (num) => Math.floor(Number(num) || 0).toLocaleString('id-ID');
 
 // ============================================================
-//  KONFIGURASI — sesuaikan dengan milikmu
+//  KONFIGURASI
 // ============================================================
 
-// Whitelist Grup
 const ALL_GROUPS = [
     '120363310599817766@g.us',
     '120363328759898377@g.us',
 ];
 
-// Owner bot — selalu boleh pakai command ini meski bukan admin grup
 const OWNER_ID = '244203384742140@lid';
 
-const EVENT_DURATION = 30 * 60 * 1000;  // 30 menit
+const EVENT_DURATION = 30 * 60 * 1000;  // 30 menit total
 const INTERVAL       =  1 * 60 * 1000;  // rotasi tiap 1 menit
+
+// ============================================================
+//  POOL HADIAH — Disesuaikan ekonomi 3 Miliar
+// ============================================================
+
+// Hujan Uang: per user
+const HUJAN_MIN = 5_000_000;
+const HUJAN_MAX = 30_000_000;
+
+// Jackpot Bersama: kontribusi per user
+const JACKPOT_KONTRIBUSI = 500_000;
+
+// Meteor Langka: pool reward bervariasi dengan weighted rarity
+const METEOR_REWARDS = [
+    { nama: '🪨 Batu Biasa',        nilai: 10_000_000,    rarity: 'Common',    emoji: '⬜' },
+    { nama: '🥈 Silver Ore',        nilai: 30_000_000,    rarity: 'Common',    emoji: '⬜' },
+    { nama: '🏅 Gold Ore',          nilai: 75_000_000,    rarity: 'Uncommon',  emoji: '🟩' },
+    { nama: '💎 Diamond',           nilai: 150_000_000,   rarity: 'Rare',      emoji: '🟦' },
+    { nama: '⚡ Energy Crystal',    nilai: 250_000_000,   rarity: 'Rare',      emoji: '🟦' },
+    { nama: '🔮 Magic Shard',       nilai: 400_000_000,   rarity: 'Epic',      emoji: '🟪' },
+    { nama: '🌑 Dark Matter',       nilai: 600_000_000,   rarity: 'Epic',      emoji: '🟪' },
+    { nama: '☀️ Solar Core',        nilai: 900_000_000,   rarity: 'Legendary', emoji: '🟧' },
+    { nama: '🌌 Void Crystal',      nilai: 1_500_000_000, rarity: 'Mythic',    emoji: '🔴' },
+];
+// Makin langka = makin kecil weight (total 100)
+const METEOR_WEIGHTS = [20, 18, 15, 12, 10, 8, 7, 6, 4];
+
+function pickMeteor() {
+    const total = METEOR_WEIGHTS.reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    for (let i = 0; i < METEOR_REWARDS.length; i++) {
+        r -= METEOR_WEIGHTS[i];
+        if (r <= 0) return METEOR_REWARDS[i];
+    }
+    return METEOR_REWARDS[0];
+}
+
+// Tebak Berhadiah: range hadiah per tingkat
+const TEBAK_HADIAH = {
+    easy:   [20_000_000,  50_000_000],
+    medium: [75_000_000,  200_000_000],
+    hard:   [250_000_000, 600_000_000],
+};
+
+// Balapan Klik: range hadiah (kata panjang = multiplier lebih besar)
+const BALAPAN_HADIAH_MIN = 50_000_000;
+const BALAPAN_HADIAH_MAX = 300_000_000;
+
+// Lomba Aktif: hadiah pemenang
+const LOMBA_HADIAH_MIN = 100_000_000;
+const LOMBA_HADIAH_MAX = 500_000_000;
+
+// Duel Bonus: bonus per menang duel
+const DUEL_BONUS = 50_000_000;
+
+// ============================================================
+//  HELPER: Acak antara min dan max
+// ============================================================
+function randBetween(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
 // ============================================================
 //  STATE GLOBAL
@@ -45,7 +106,7 @@ if (!global.abuseState) {
 }
 
 // ============================================================
-//  HELPER: Broadcast pesan ke SEMUA grup whitelist
+//  HELPER: Broadcast ke semua grup
 // ============================================================
 async function broadcast(text, mentions = []) {
     const sock = global.abuseState.sock;
@@ -60,12 +121,19 @@ async function broadcast(text, mentions = []) {
 }
 
 // ============================================================
-//  HELPER: Cek apakah sender adalah admin di suatu grup
+//  HELPER: Kirim ke 1 grup spesifik
+// ============================================================
+async function sendToGroup(groupId, text, mentions = []) {
+    try {
+        await global.abuseState.sock?.sendMessage(groupId, { text, mentions });
+    } catch(e) {}
+}
+
+// ============================================================
+//  HELPER: Cek admin grup
 // ============================================================
 async function isGroupAdmin(sock, groupId, senderJid) {
-    // Owner selalu lolos
     if (senderJid === OWNER_ID) return true;
-
     try {
         const meta = await sock.groupMetadata(groupId);
         const admins = meta.participants
@@ -79,7 +147,7 @@ async function isGroupAdmin(sock, groupId, senderJid) {
 }
 
 // ============================================================
-//  HELPER: Acak urutan 10 event (tanpa winrate_gila & boss_raid)
+//  HELPER: Acak urutan 10 event
 // ============================================================
 const EVENT_LIST = [
     'hujan_uang', 'jackpot_bersama', 'borong_pasar', 'meteor_langka',
@@ -97,7 +165,174 @@ function shuffleEvents() {
 }
 
 // ============================================================
-//  MULAI EVENT BERIKUTNYA (broadcast ke semua grup)
+//  GENERATOR SOAL TEBAK
+// ============================================================
+const SOAL_POOL = {
+    easy: [
+        { soal: 'Ibukota Indonesia?',                        jawaban: 'jakarta',     alt: [] },
+        { soal: 'Berapa 25 x 4?',                           jawaban: '100',          alt: [] },
+        { soal: 'Berapa sisi pada segitiga?',                jawaban: '3',            alt: ['tiga'] },
+        { soal: 'Warna campuran merah + biru?',              jawaban: 'ungu',         alt: ['purple', 'violet'] },
+        { soal: 'Jumlah pemain bola dalam 1 tim?',           jawaban: '11',           alt: ['sebelas'] },
+        { soal: 'Apa nama bulan ke-8?',                      jawaban: 'agustus',      alt: ['august'] },
+        { soal: 'Berapa 100 dibagi 4?',                      jawaban: '25',           alt: ['dua puluh lima'] },
+        { soal: 'Berapa 15 x 15?',                           jawaban: '225',          alt: [] },
+        { soal: 'Berapa 7 x 8?',                             jawaban: '56',           alt: ['lima puluh enam'] },
+        { soal: 'Ibu kota Jawa Barat?',                      jawaban: 'bandung',      alt: [] },
+        { soal: 'Nama presiden RI ke-1?',                    jawaban: 'soekarno',     alt: ['sukarno'] },
+        { soal: 'Berapa 50 + 75?',                           jawaban: '125',          alt: [] },
+        { soal: 'Planet ke-3 dari matahari?',                jawaban: 'bumi',         alt: ['earth'] },
+        { soal: 'Warna bendera Indonesia bagian atas?',      jawaban: 'merah',        alt: ['red'] },
+        { soal: 'Berapa 12 x 12?',                           jawaban: '144',          alt: [] },
+        { soal: 'Berapa 200 - 88?',                          jawaban: '112',          alt: [] },
+        { soal: 'Hewan yang bisa terbang selain burung?',    jawaban: 'kelelawar',    alt: ['bat'] },
+        { soal: 'Apa warna daun pada umumnya?',              jawaban: 'hijau',        alt: ['green'] },
+    ],
+    medium: [
+        { soal: 'Hewan darat terbesar di dunia?',            jawaban: 'gajah',        alt: ['elephant'] },
+        { soal: 'Simbol kimia untuk emas?',                  jawaban: 'au',           alt: ['gold'] },
+        { soal: 'Berapa 2 pangkat 10?',                      jawaban: '1024',         alt: [] },
+        { soal: 'Siapa penemu lampu bohlam?',                jawaban: 'edison',       alt: ['thomas edison'] },
+        { soal: 'Bahasa resmi Brazil?',                      jawaban: 'portugis',     alt: ['portuguese', 'portugues'] },
+        { soal: 'Mata uang negara Jepang?',                  jawaban: 'yen',          alt: ['jen'] },
+        { soal: 'Bahasa pemrograman buatan Guido van Rossum?', jawaban: 'python',     alt: [] },
+        { soal: 'Ibu kota Australia?',                       jawaban: 'canberra',     alt: [] },
+        { soal: 'Berapa jumlah huruf alfabet?',              jawaban: '26',           alt: ['dua puluh enam'] },
+        { soal: 'Apa rumus kimia air?',                      jawaban: 'h2o',          alt: ['h₂o'] },
+        { soal: 'Negara terkecil di dunia?',                 jawaban: 'vatikan',      alt: ['vatican'] },
+        { soal: 'Simbol kimia untuk besi?',                  jawaban: 'fe',           alt: ['iron'] },
+        { soal: 'Gunung tertinggi di Indonesia?',            jawaban: 'puncak jaya',  alt: ['carstensz', 'jayawijaya'] },
+        { soal: 'Berapa derajat dalam 1 lingkaran penuh?',   jawaban: '360',          alt: [] },
+        { soal: 'Nama sungai terpanjang di dunia?',          jawaban: 'nil',          alt: ['nile'] },
+        { soal: 'Siapa pendiri Facebook?',                   jawaban: 'mark zuckerberg', alt: ['zuckerberg'] },
+        { soal: 'Berapa 999 + 1?',                           jawaban: '1000',         alt: ['seribu', 'one thousand'] },
+        { soal: 'Tahun berapa Piala Dunia pertama?',         jawaban: '1930',         alt: [] },
+    ],
+    hard: [
+        { soal: 'Planet terdekat dengan Matahari?',          jawaban: 'merkurius',    alt: ['merkuri', 'mercury'] },
+        { soal: 'Siapa pencipta teori relativitas?',         jawaban: 'einstein',     alt: ['albert einstein'] },
+        { soal: 'Unsur kimia dengan nomor atom 79?',         jawaban: 'emas',         alt: ['gold', 'au'] },
+        { soal: 'Berapa kecepatan cahaya? (km/s)',           jawaban: '300000',       alt: ['300.000', '299792'] },
+        { soal: 'Siapa pendiri Microsoft?',                  jawaban: 'bill gates',   alt: ['william gates'] },
+        { soal: 'DNA singkatan dari?',                       jawaban: 'deoxyribonucleic acid', alt: ['asam deoksiribonukleat'] },
+        { soal: 'Berapa jumlah kromosom manusia?',           jawaban: '46',           alt: ['empat puluh enam'] },
+        { soal: 'Siapa yang menulis novel "1984"?',          jawaban: 'george orwell',alt: ['orwell'] },
+        { soal: 'Berapa 2 pangkat 16?',                      jawaban: '65536',        alt: [] },
+        { soal: 'Siapa penemu penicillin?',                  jawaban: 'fleming',      alt: ['alexander fleming'] },
+        { soal: 'Mata uang negara Korea Selatan?',           jawaban: 'won',          alt: ['korean won'] },
+        { soal: 'Berapa 17 x 17?',                           jawaban: '289',          alt: [] },
+        { soal: 'Negara mana yang pertama mendarat di bulan?', jawaban: 'amerika',    alt: ['usa', 'as', 'united states', 'amerika serikat'] },
+        { soal: 'Siapa yang melukis Mona Lisa?',             jawaban: 'da vinci',     alt: ['leonardo da vinci', 'leonardo'] },
+        { soal: 'Berapa unsur dalam tabel periodik modern?', jawaban: '118',          alt: [] },
+        { soal: 'Apa nama tulang terkecil dalam tubuh manusia?', jawaban: 'sanggurdi', alt: ['stapes'] },
+        { soal: 'Berapa jumlah negara anggota PBB saat ini?', jawaban: '193',        alt: [] },
+    ],
+};
+
+function generateSoal() {
+    const roll = Math.random();
+    let tingkat;
+    if (roll < 0.4)      tingkat = 'easy';
+    else if (roll < 0.75) tingkat = 'medium';
+    else                  tingkat = 'hard';
+
+    const pool  = SOAL_POOL[tingkat];
+    const pilih = pool[Math.floor(Math.random() * pool.length)];
+    const range = TEBAK_HADIAH[tingkat];
+    const hadiah = randBetween(range[0], range[1]);
+    return { soal: pilih.soal, jawaban: pilih.jawaban, alt: pilih.alt || [], hadiah, tingkat };
+}
+
+// ============================================================
+//  GENERATOR KATA BALAPAN
+// ============================================================
+const KATA_POOL = [
+    // Pendek 4-5 huruf → multiplier 1x
+    { kata: 'SULTAN', len: 'short' }, { kata: 'CUAN', len: 'short' },
+    { kata: 'BOSS', len: 'short' },   { kata: 'FOMO', len: 'short' },
+    { kata: 'WIBU', len: 'short' },   { kata: 'GACOR', len: 'short' },
+    // Sedang 6-8 huruf → multiplier 1.5x
+    { kata: 'GASKEUN', len: 'mid' },  { kata: 'JACKPOT', len: 'mid' },
+    { kata: 'MANTAP', len: 'mid' },   { kata: 'MAXWIN', len: 'mid' },
+    { kata: 'LEGEND', len: 'mid' },   { kata: 'CRYPTO', len: 'mid' },
+    { kata: 'DIAMOND', len: 'mid' },  { kata: 'TRENDING', len: 'mid' },
+    // Panjang 9+ huruf → multiplier 2.5x
+    { kata: 'INDONESIA', len: 'long' },    { kata: 'MERDEKA', len: 'long' },
+    { kata: 'SEMANGAT', len: 'long' },     { kata: 'KEMENANGAN', len: 'long' },
+    { kata: 'SPEKTAKULER', len: 'long' },  { kata: 'MILIARDER', len: 'long' },
+    { kata: 'FANTASTIS', len: 'long' },    { kata: 'GEMILANG', len: 'long' },
+];
+
+const MULT_MAP = { short: 1, mid: 1.5, long: 2.5 };
+
+function generateKataBalapan() {
+    const pick = KATA_POOL[Math.floor(Math.random() * KATA_POOL.length)];
+    const base  = randBetween(BALAPAN_HADIAH_MIN, BALAPAN_HADIAH_MAX);
+    const hadiah = Math.floor(base * MULT_MAP[pick.len]);
+    return { kata: pick.kata, hadiah };
+}
+
+// ============================================================
+//  AUTO-RESTART HELPERS
+// ============================================================
+
+function spawnMeteorBaru(groupId) {
+    const state = global.abuseState;
+    const delay = randBetween(5000, 12000); // 5–12 detik
+    setTimeout(async () => {
+        if (!state.active || state.currentEvent !== 'meteor_langka') return;
+        const pilihan = pickMeteor();
+        if (!state.eventData.meteorPerGrup) state.eventData.meteorPerGrup = {};
+        state.eventData.meteorPerGrup[groupId] = { reward: pilihan, claimed: false };
+        await sendToGroup(groupId,
+            `☄️ *METEOR BARU JATUH!*\n\n` +
+            `${pilihan.emoji} Rarity: *${pilihan.rarity}*\n` +
+            `💰 ${pilihan.nama} → *${fmt(pilihan.nilai)} koin*\n\n` +
+            `⚡ Ketik *KLAIM* sekarang!`
+        );
+    }, delay);
+}
+
+function spawnTebakBaru(groupId) {
+    const state = global.abuseState;
+    const delay = randBetween(20000, 30000); // 3–7 detik
+    setTimeout(async () => {
+        if (!state.active || state.currentEvent !== 'tebak_berhadiah') return;
+        const { soal, jawaban, alt, hadiah, tingkat } = generateSoal();
+        if (!state.eventData.tebakPerGrup) state.eventData.tebakPerGrup = {};
+        state.eventData.tebakPerGrup[groupId] = { jawaban, alt, hadiah, answered: false };
+        const lvlEmoji = tingkat === 'hard' ? '🔴 HARD' : tingkat === 'medium' ? '🟡 MEDIUM' : '🟢 EASY';
+        await sendToGroup(groupId,
+            `🧠 *SOAL BARU!* ${lvlEmoji}\n\n` +
+            `❓ *${soal}*\n\n` +
+            `💰 Hadiah: *${fmt(hadiah)} koin!*\n` +
+            `💡 Ketik jawabanmu langsung!`
+        );
+    }, delay);
+}
+
+function spawnBalapanBaru(groupId) {
+    const state = global.abuseState;
+    const delay = randBetween(3000, 8000); // 3–8 detik
+    setTimeout(async () => {
+        if (!state.active || state.currentEvent !== 'balapan_klik') return;
+        const { kata, hadiah } = generateKataBalapan();
+        if (!state.eventData.balapanPerGrup) state.eventData.balapanPerGrup = {};
+        state.eventData.balapanPerGrup[groupId] = { kata, hadiah, claimed: false };
+        await sendToGroup(groupId,
+            `⚡ *RONDE BARU!*\n\n` +
+            `⌨️ Ketik kata ini SEKARANG:\n` +
+            `╔══════════════╗\n` +
+            `║   *${kata}*   ║\n` +
+            `╚══════════════╝\n\n` +
+            `💰 Hadiah: *${fmt(hadiah)} koin!*\n` +
+            `🔥 Harus PERSIS & KAPITAL!`
+        );
+    }, delay);
+}
+
+// ============================================================
+//  MULAI EVENT BERIKUTNYA
 // ============================================================
 async function startNextEvent() {
     const state = global.abuseState;
@@ -116,10 +351,9 @@ async function startNextEvent() {
 
         // ── 1. HUJAN UANG ────────────────────────────────────
         case 'hujan_uang': {
-            let bonus   = 0;
-            let topList = [];
+            let bonus = 0, topList = [];
             for (const jid in db.users) {
-                const reward = Math.floor(Math.random() * 2000000) + 500000;
+                const reward = randBetween(HUJAN_MIN, HUJAN_MAX);
                 db.users[jid].balance = (db.users[jid].balance || 0) + reward;
                 bonus += reward;
                 topList.push({ jid, reward });
@@ -133,8 +367,7 @@ async function startNextEvent() {
             await broadcast(
                 `🌧️ *EVENT: HUJAN UANG!* 🌧️\n` +
                 `━━━━━━━━━━━━━━━━━━━━\n` +
-                `Koin berjatuhan dari langit!\n` +
-                `Semua member aktif mendapat bonus!\n\n` +
+                `Koin berjatuhan dari langit!\n\n` +
                 `${tampil}${topList.length > 8 ? `\n...dan ${topList.length - 8} lainnya` : ''}\n\n` +
                 `💰 Total hujan: *${fmt(bonus)} koin!*\n` +
                 `⏱️ Sisa event: *${sisaMenit} menit*`,
@@ -145,12 +378,11 @@ async function startNextEvent() {
 
         // ── 2. JACKPOT BERSAMA ───────────────────────────────
         case 'jackpot_bersama': {
-            const kontribusi = 50000;
             let pot = 0, peserta = [];
             for (const jid in db.users) {
-                if ((db.users[jid].balance || 0) >= kontribusi) {
-                    db.users[jid].balance -= kontribusi;
-                    pot += kontribusi;
+                if ((db.users[jid].balance || 0) >= JACKPOT_KONTRIBUSI) {
+                    db.users[jid].balance -= JACKPOT_KONTRIBUSI;
+                    pot += JACKPOT_KONTRIBUSI;
                     peserta.push(jid);
                 }
             }
@@ -164,7 +396,7 @@ async function startNextEvent() {
             await broadcast(
                 `🎰 *EVENT: JACKPOT BERSAMA!* 🎰\n` +
                 `━━━━━━━━━━━━━━━━━━━━\n` +
-                `Semua member taruh 💰${fmt(kontribusi)} ke dalam pot!\n\n` +
+                `Semua member taruh 💰${fmt(JACKPOT_KONTRIBUSI)} ke dalam pot!\n\n` +
                 `👥 Peserta: *${peserta.length} orang*\n` +
                 `💰 Total Pot: *${fmt(pot)} koin*\n\n` +
                 `🎊 *PEMENANG: @${winnerJid.split('@')[0]}*\n` +
@@ -180,48 +412,57 @@ async function startNextEvent() {
             if (!db.settings) db.settings = {};
             db.settings.borongPasar       = true;
             db.settings.borongPasarUntil  = Date.now() + INTERVAL;
-            db.settings.borongPasarDiskon = 50;
+            db.settings.borongPasarDiskon = 20;
             saveDB(db);
             state.eventData.borongPasar = true;
             await broadcast(
                 `🛒 *EVENT: BORONG PASAR!* 🛒\n` +
                 `━━━━━━━━━━━━━━━━━━━━\n` +
                 `DISKON BESAR-BESARAN SELAMA 1 MENIT!\n\n` +
-                `💥 Semua item toko: *DISKON 50%*\n` +
-                `🌾 Bibit pertanian: *DISKON 50%*\n` +
-                `🐄 Hewan ternak: *DISKON 50%*\n` +
-                `⛏️ Hardware mining: *DISKON 50%*\n\n` +
-                `⚠️ Stok terbatas! Belanja sekarang!\n` +
-                `⏱️ Berakhir dalam 1 menit!`
+                `💥 Semua item toko: *DISKON 20%*\n` +
+                `🌾 Bibit pertanian: *DISKON 20%*\n` +
+                `🐄 Hewan ternak: *DISKON 20%*\n` +
+                `⛏️ Hardware mining: *DISKON 20%*\n\n` +
+                `⚠️ Belanja sekarang! Berakhir dalam 1 menit!`
             );
             break;
         }
 
         // ── 4. METEOR LANGKA ─────────────────────────────────
         case 'meteor_langka': {
-            const rewards = [
-                { nama: '💎 Diamond',       nilai: 5000000  },
-                { nama: '🏅 Gold Ore',      nilai: 3000000  },
-                { nama: '⚡ Energy Crystal', nilai: 7000000  },
-                { nama: '🔮 Magic Shard',   nilai: 10000000 },
-                { nama: '🌑 Dark Matter',   nilai: 15000000 },
-            ];
-            const pilihan = rewards[Math.floor(Math.random() * rewards.length)];
-            state.eventData.meteorActive  = true;
-            state.eventData.meteorReward  = pilihan;
-            state.eventData.meteorKlaim   = false;
-            state.eventData.meteorKeyword = 'KLAIM';
+            state.eventData.meteorPerGrup = {};
+            // Spawn meteor awal berbeda untuk tiap grup
+            for (const gid of ALL_GROUPS) {
+                const pilihan = pickMeteor();
+                state.eventData.meteorPerGrup[gid] = { reward: pilihan, claimed: false };
+            }
+            // Broadcast info umum
             await broadcast(
                 `☄️ *EVENT: METEOR LANGKA JATUH!* ☄️\n` +
                 `━━━━━━━━━━━━━━━━━━━━\n` +
-                `Sebuah meteor langka baru saja jatuh!\n\n` +
-                `💰 Isi: *${pilihan.nama}*\n` +
-                `💵 Nilai: *${fmt(pilihan.nilai)} koin*\n\n` +
-                `⚡ Siapa CEPAT dia dapat!\n` +
-                `🏃 Ketik *KLAIM* sekarang juga!\n` +
-                `(Hanya 1 orang pertama di tiap grup)\n\n` +
-                `⏱️ Berakhir dalam 1 menit!`
+                `Meteor jatuh di setiap grup!\n` +
+                `Rarity berbeda di tiap grup!\n\n` +
+                `📋 *Tabel Rarity:*\n` +
+                `⬜ Common    → 10–30 Juta\n` +
+                `🟩 Uncommon  → 75 Juta\n` +
+                `🟦 Rare      → 150–250 Juta\n` +
+                `🟪 Epic      → 400–600 Juta\n` +
+                `🟧 Legendary → 900 Juta\n` +
+                `🔴 Mythic    → 1.5 Miliar!\n\n` +
+                `⚡ Ketik *KLAIM* sekarang!\n` +
+                `♻️ Meteor baru muncul otomatis setelah diklaim!`
             );
+            // Kirim detail meteor per grup
+            for (const gid of ALL_GROUPS) {
+                const m = state.eventData.meteorPerGrup[gid].reward;
+                await sendToGroup(gid,
+                    `☄️ *METEOR DI GRUP INI:*\n` +
+                    `${m.emoji} Rarity: *${m.rarity}*\n` +
+                    `💎 ${m.nama}\n` +
+                    `💰 Nilai: *${fmt(m.nilai)} koin*\n\n` +
+                    `⚡ Ketik *KLAIM* sekarang!`
+                );
+            }
             break;
         }
 
@@ -269,18 +510,17 @@ async function startNextEvent() {
 
         // ── 7. DUEL BERHADIAH ────────────────────────────────
         case 'duel_berhadiah': {
-            const bonusDuel = 2000000;
             if (!db.settings) db.settings = {};
-            db.settings.duelBonus      = bonusDuel;
+            db.settings.duelBonus      = DUEL_BONUS;
             db.settings.duelBonusUntil = Date.now() + INTERVAL;
             saveDB(db);
-            state.eventData.duelBonus = bonusDuel;
+            state.eventData.duelBonus = DUEL_BONUS;
             await broadcast(
                 `⚔️ *EVENT: DUEL BERHADIAH!* ⚔️\n` +
                 `━━━━━━━━━━━━━━━━━━━━\n` +
                 `Arena duel dibuka spesial!\n\n` +
                 `🏆 Setiap menang duel:\n` +
-                `💰 *+${fmt(bonusDuel)} KOIN BONUS*\n` +
+                `💰 *+${fmt(DUEL_BONUS)} KOIN BONUS*\n` +
                 `(Di luar hadiah duel normal)\n\n` +
                 `🤺 Ketik *!duel @user <taruhan>*\n\n` +
                 `⏱️ Berlaku selama 1 menit!`
@@ -290,76 +530,73 @@ async function startNextEvent() {
 
         // ── 8. TEBAK BERHADIAH ───────────────────────────────
         case 'tebak_berhadiah': {
-            const soalList = [
-                { soal: 'Ibukota Indonesia?',                           jawaban: 'jakarta',     alt: [] },
-                { soal: 'Berapa 25 x 4?',                              jawaban: '100',          alt: [] },
-                { soal: 'Hewan darat terbesar di dunia?',              jawaban: 'gajah',        alt: ['elephant'] },
-                { soal: 'Planet terdekat dengan Matahari?',            jawaban: 'merkurius',    alt: ['merkuri'] },
-                { soal: 'Simbol kimia untuk emas?',                    jawaban: 'au',           alt: ['gold'] },
-                { soal: 'Berapa 2 pangkat 10?',                        jawaban: '1024',         alt: [] },
-                { soal: 'Siapa penemu lampu bohlam?',                  jawaban: 'edison',       alt: ['thomas edison'] },
-                { soal: 'Warna campuran merah + biru?',                jawaban: 'ungu',         alt: ['purple', 'violet'] },
-                { soal: 'Berapa sisi pada segitiga?',                  jawaban: '3',            alt: ['tiga'] },
-                { soal: 'Negara mana yang punya menara Eiffel?',       jawaban: 'prancis',      alt: ['paris', 'france'] },
-                { soal: 'Mata uang negara Jepang?',                    jawaban: 'yen',          alt: ['jen'] },
-                { soal: 'Berapa 100 dibagi 4?',                        jawaban: '25',           alt: ['dua puluh lima'] },
-                { soal: 'Bahasa pemrograman buatan Guido van Rossum?', jawaban: 'python',       alt: [] },
-                { soal: 'Jumlah pemain bola dalam 1 tim?',             jawaban: '11',           alt: ['sebelas'] },
-                { soal: 'Apa nama bulan ke-8?',                        jawaban: 'agustus',      alt: ['august'] },
-                { soal: 'Berapa 15 x 15?',                             jawaban: '225',          alt: [] },
-                { soal: 'Bahasa resmi Brazil?',                        jawaban: 'portugis',     alt: ['portuguese'] },
-                { soal: 'Siapa pencipta teori relativitas?',           jawaban: 'einstein',     alt: ['albert einstein'] },
-            ];
-            const pilih  = soalList[Math.floor(Math.random() * soalList.length)];
-            const hadiah = Math.floor(Math.random() * 4000000) + 2000000;
-            state.eventData.tebakActive  = true;
-            state.eventData.tebakJawaban = pilih.jawaban;
-            state.eventData.tebakAlt     = pilih.alt || [];
-            state.eventData.tebakHadiah  = hadiah;
-            state.eventData.tebakSudah   = {};
+            state.eventData.tebakPerGrup = {};
+            // Generate soal berbeda per grup
+            for (const gid of ALL_GROUPS) {
+                const { soal, jawaban, alt, hadiah, tingkat } = generateSoal();
+                state.eventData.tebakPerGrup[gid] = { soal, jawaban, alt, hadiah, tingkat, answered: false };
+            }
+            // Broadcast info umum
             await broadcast(
                 `🧠 *EVENT: TEBAK BERHADIAH!* 🧠\n` +
                 `━━━━━━━━━━━━━━━━━━━━\n` +
-                `Pertanyaan muncul! Jawab dengan benar!\n\n` +
-                `❓ *SOAL:* ${pilih.soal}\n\n` +
-                `💰 Hadiah per grup: *${fmt(hadiah)} koin!*\n` +
-                `🏆 1 pemenang per grup!\n\n` +
-                `💡 Langsung ketik jawabanmu!`
+                `Soal berbeda di setiap grup!\n\n` +
+                `🟢 Easy   → ${fmt(TEBAK_HADIAH.easy[0])} – ${fmt(TEBAK_HADIAH.easy[1])}\n` +
+                `🟡 Medium → ${fmt(TEBAK_HADIAH.medium[0])} – ${fmt(TEBAK_HADIAH.medium[1])}\n` +
+                `🔴 Hard   → ${fmt(TEBAK_HADIAH.hard[0])} – ${fmt(TEBAK_HADIAH.hard[1])}\n\n` +
+                `♻️ Soal baru otomatis muncul setelah dijawab!`
             );
+            // Kirim soal per grup
+            for (const gid of ALL_GROUPS) {
+                const d = state.eventData.tebakPerGrup[gid];
+                const lvlEmoji = d.tingkat === 'hard' ? '🔴 HARD' : d.tingkat === 'medium' ? '🟡 MEDIUM' : '🟢 EASY';
+                await sendToGroup(gid,
+                    `🧠 *SOAL UNTUK GRUP INI:* ${lvlEmoji}\n\n` +
+                    `❓ *${d.soal}*\n\n` +
+                    `💰 Hadiah: *${fmt(d.hadiah)} koin!*\n` +
+                    `💡 Ketik jawabanmu langsung!`
+                );
+            }
             break;
         }
 
         // ── 9. BALAPAN KLIK ──────────────────────────────────
         case 'balapan_klik': {
-            const kataList = [
-                'GASKEUN', 'SULTAN', 'CUAN', 'JACKPOT', 'MANTAP',
-                'GACOR', 'JEPE', 'TRENDING', 'BOSS', 'FOMO',
-                'CRYPTO', 'DIAMOND', 'LEGEND', 'MAXWIN', 'WIBU',
-            ];
-            const kata   = kataList[Math.floor(Math.random() * kataList.length)];
-            const hadiah = Math.floor(Math.random() * 5000000) + 3000000;
-            state.eventData.balapanActive = true;
-            state.eventData.balapanKata   = kata;
-            state.eventData.balapanHadiah = hadiah;
-            state.eventData.balapanSudah  = {};
+            state.eventData.balapanPerGrup = {};
+            // Kata berbeda per grup
+            for (const gid of ALL_GROUPS) {
+                const { kata, hadiah } = generateKataBalapan();
+                state.eventData.balapanPerGrup[gid] = { kata, hadiah, claimed: false };
+            }
+            // Broadcast info umum
             await broadcast(
                 `⚡ *EVENT: BALAPAN KLIK!* ⚡\n` +
                 `━━━━━━━━━━━━━━━━━━━━\n` +
-                `SIAPA PALING CEPAT DIA MENANG!\n\n` +
-                `⌨️ *Ketik kata ini SEKARANG:*\n` +
-                `╔══════════════╗\n` +
-                `║   *${kata}*   ║\n` +
-                `╚══════════════╝\n\n` +
-                `💰 Hadiah per grup: *${fmt(hadiah)} koin!*\n` +
-                `🔥 Harus PERSIS dan HURUF KAPITAL!\n` +
-                `⚠️ 1 pemenang per grup!`
+                `Kata berbeda di setiap grup!\n` +
+                `Makin panjang kata → Makin besar hadiah!\n\n` +
+                `📏 Pendek (4-5 hruf):  ${fmt(BALAPAN_HADIAH_MIN)} – ${fmt(Math.floor(BALAPAN_HADIAH_MAX * 1))}\n` +
+                `📏 Sedang (6-8 huruf): s/d ${fmt(Math.floor(BALAPAN_HADIAH_MAX * 1.5))}\n` +
+                `📏 Panjang (9+ huruf): s/d ${fmt(Math.floor(BALAPAN_HADIAH_MAX * 2.5))}\n\n` +
+                `♻️ Kata baru otomatis muncul setelah diklaim!`
             );
+            // Kirim kata per grup
+            for (const gid of ALL_GROUPS) {
+                const d = state.eventData.balapanPerGrup[gid];
+                await sendToGroup(gid,
+                    `⚡ *KATA UNTUK GRUP INI:*\n` +
+                    `╔══════════════╗\n` +
+                    `║   *${d.kata}*   ║\n` +
+                    `╚══════════════╝\n\n` +
+                    `💰 Hadiah: *${fmt(d.hadiah)} koin!*\n` +
+                    `🔥 Ketik PERSIS & KAPITAL sekarang!`
+                );
+            }
             break;
         }
 
         // ── 10. LOMBA AKTIF ──────────────────────────────────
         case 'lomba_aktif': {
-            const hadiah = Math.floor(Math.random() * 8000000) + 5000000;
+            const hadiah = randBetween(LOMBA_HADIAH_MIN, LOMBA_HADIAH_MAX);
             state.eventData.lombaActive = true;
             state.eventData.lombaSkor   = {};
             state.eventData.lombaHadiah = hadiah;
@@ -379,19 +616,19 @@ async function startNextEvent() {
 }
 
 // ============================================================
-//  RESOLVE LOMBA AKTIF SEBELUM GANTI EVENT
+//  RESOLVE LOMBA AKTIF
 // ============================================================
 async function resolveLombaAktif() {
-    const state  = global.abuseState;
-    const db     = state.db;
-    const skor   = state.eventData.lombaSkor || {};
-    const keys   = Object.keys(skor);
+    const state = global.abuseState;
+    const db    = state.db;
+    const skor  = state.eventData.lombaSkor || {};
+    const keys  = Object.keys(skor);
     if (keys.length === 0) {
         await broadcast(`🏁 *LOMBA AKTIF — SELESAI!*\n\nTidak ada yang kirim pesan. Tidak ada pemenang.`);
         return;
     }
-    const winJid  = keys.reduce((a, b) => skor[a] > skor[b] ? a : b);
-    const hadiah  = state.eventData.lombaHadiah;
+    const winJid = keys.reduce((a, b) => skor[a] > skor[b] ? a : b);
+    const hadiah = state.eventData.lombaHadiah;
     if (db.users[winJid]) db.users[winJid].balance = (db.users[winJid].balance || 0) + hadiah;
     saveDB(db);
     await broadcast(
@@ -412,12 +649,10 @@ async function stopEvent(reason = 'auto') {
 
     const db = state.db;
 
-    // Resolve event yang sedang berjalan
     if (state.currentEvent === 'lomba_aktif' && state.eventData.lombaActive) {
         await resolveLombaAktif();
     }
 
-    // Bersihkan flags di db.settings
     if (db && db.settings) {
         const flags = [
             'borongPasar','borongPasarUntil','borongPasarDiskon',
@@ -429,7 +664,6 @@ async function stopEvent(reason = 'auto') {
         saveDB(db);
     }
 
-    // Reset state
     state.active       = false;
     state.currentEvent = null;
     state.eventData    = {};
@@ -460,66 +694,75 @@ const handleInteractive = async (body, sender, groupId, db) => {
     const txtLower = (body || '').toLowerCase().trim();
     const data     = state.eventData;
 
-    // ── METEOR: ketik KLAIM ───────────────────────────────
-    if (state.currentEvent === 'meteor_langka' && data.meteorActive) {
-        if (!data.meteorKlaim) {
-            if (txtLower === 'klaim') {
-                if (!data.meteorWinners) data.meteorWinners = {};
-                if (data.meteorWinners[groupId]) return;
-                data.meteorWinners[groupId] = sender;
-                const nilai = data.meteorReward.nilai;
-                if (db.users[sender]) db.users[sender].balance = (db.users[sender].balance || 0) + nilai;
-                saveDB(db);
-                try {
-                    await global.abuseState.sock.sendMessage(groupId, {
-                        text: `☄️ *METEOR DIKLAIM!*\n\n` +
-                              `@${sender.split('@')[0]} berhasil klaim meteor!\n` +
-                              `${data.meteorReward.nama} senilai *${fmt(nilai)} koin*!`,
-                        mentions: [sender]
-                    });
-                } catch(e) {}
-            }
+    // ── METEOR LANGKA ─────────────────────────────────────
+    if (state.currentEvent === 'meteor_langka') {
+        if (!data.meteorPerGrup) return;
+        const meteorGrup = data.meteorPerGrup[groupId];
+        if (!meteorGrup || meteorGrup.claimed) return;
+
+        if (txtLower === 'klaim') {
+            meteorGrup.claimed = true;
+            const nilai = meteorGrup.reward.nilai;
+            if (db.users[sender]) db.users[sender].balance = (db.users[sender].balance || 0) + nilai;
+            saveDB(db);
+            await sendToGroup(groupId,
+                `☄️ *METEOR DIKLAIM!*\n\n` +
+                `@${sender.split('@')[0]} berhasil klaim!\n` +
+                `${meteorGrup.reward.emoji} *${meteorGrup.reward.rarity}* — ${meteorGrup.reward.nama}\n` +
+                `💰 *+${fmt(nilai)} koin*\n\n` +
+                `♻️ Meteor baru muncul dalam beberapa detik...`,
+                [sender]
+            );
+            spawnMeteorBaru(groupId);
         }
         return;
     }
 
     // ── TEBAK BERHADIAH ───────────────────────────────────
-    if (state.currentEvent === 'tebak_berhadiah' && data.tebakActive) {
-        if (data.tebakSudah[groupId]) return;
-        const corrects = [data.tebakJawaban, ...(data.tebakAlt || [])];
+    if (state.currentEvent === 'tebak_berhadiah') {
+        if (!data.tebakPerGrup) return;
+        const tebakGrup = data.tebakPerGrup[groupId];
+        if (!tebakGrup || tebakGrup.answered) return;
+
+        const corrects = [tebakGrup.jawaban, ...(tebakGrup.alt || [])];
         if (corrects.includes(txtLower)) {
-            data.tebakSudah[groupId] = true;
-            const hadiah = data.tebakHadiah;
+            tebakGrup.answered = true;
+            const hadiah = tebakGrup.hadiah;
             if (db.users[sender]) db.users[sender].balance = (db.users[sender].balance || 0) + hadiah;
             saveDB(db);
-            try {
-                await global.abuseState.sock.sendMessage(groupId, {
-                    text: `🧠 *JAWABAN BENAR!*\n\n` +
-                          `🏆 @${sender.split('@')[0]} jawab benar!\n` +
-                          `💰 Menang: *${fmt(hadiah)} koin!*`,
-                    mentions: [sender]
-                });
-            } catch(e) {}
+            await sendToGroup(groupId,
+                `🧠 *JAWABAN BENAR!*\n\n` +
+                `🏆 @${sender.split('@')[0]} menjawab benar!\n` +
+                `✅ Jawaban: *${tebakGrup.jawaban}*\n` +
+                `💰 Menang: *+${fmt(hadiah)} koin!*\n\n` +
+                `♻️ Soal baru muncul dalam beberapa detik...`,
+                [sender]
+            );
+            spawnTebakBaru(groupId);
         }
         return;
     }
 
     // ── BALAPAN KLIK ─────────────────────────────────────
-    if (state.currentEvent === 'balapan_klik' && data.balapanActive) {
-        if (data.balapanSudah[groupId]) return;
-        if (body.trim() === data.balapanKata) {
-            data.balapanSudah[groupId] = true;
-            const hadiah = data.balapanHadiah;
+    if (state.currentEvent === 'balapan_klik') {
+        if (!data.balapanPerGrup) return;
+        const balapanGrup = data.balapanPerGrup[groupId];
+        if (!balapanGrup || balapanGrup.claimed) return;
+
+        if ((body || '').trim() === balapanGrup.kata) {
+            balapanGrup.claimed = true;
+            const hadiah = balapanGrup.hadiah;
             if (db.users[sender]) db.users[sender].balance = (db.users[sender].balance || 0) + hadiah;
             saveDB(db);
-            try {
-                await global.abuseState.sock.sendMessage(groupId, {
-                    text: `⚡ *PALING CEPAT!*\n\n` +
-                          `⚡ @${sender.split('@')[0]} paling cepat!\n` +
-                          `💰 Menang: *${fmt(hadiah)} koin!*`,
-                    mentions: [sender]
-                });
-            } catch(e) {}
+            await sendToGroup(groupId,
+                `⚡ *PALING CEPAT!*\n\n` +
+                `⚡ @${sender.split('@')[0]} paling cepat!\n` +
+                `🔤 Kata: *${balapanGrup.kata}*\n` +
+                `💰 Menang: *+${fmt(hadiah)} koin!*\n\n` +
+                `♻️ Kata baru muncul dalam beberapa detik...`,
+                [sender]
+            );
+            spawnBalapanBaru(groupId);
         }
         return;
     }
@@ -572,6 +815,7 @@ const adminAbuseCmd = async (command, args, msg, user, db, sock) => {
             `🎲 Total *10 event* berbeda akan muncul!\n\n` +
             `💰 Ekonomi  ⛏️ Mining  🌾 Farming\n` +
             `⚔️ Duel  🧠 Tebak  ⚡ Balapan  📊 Lomba\n\n` +
+            `♻️ Meteor/Tebak/Balapan: auto-restart tiap ada pemenang!\n` +
             `━━━━━━━━━━━━━━━━━━━━\n` +
             `🚀 *EVENT PERTAMA DIMULAI DALAM 3 DETIK...*`
         );
@@ -612,6 +856,6 @@ const adminAbuseCmd = async (command, args, msg, user, db, sock) => {
     }
 };
 
-// --- EKSPOR SEBAGAI SATU PAKET ---
+// --- EKSPOR ---
 adminAbuseCmd.handleInteractive = handleInteractive;
 module.exports = adminAbuseCmd;
