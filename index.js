@@ -529,7 +529,7 @@ async function startBot() {
             await miningCmd(command, args, msg, user, db, sock).catch(e => console.error("Error Mining:", e.message));
             await duelCmd(command, args, msg, user, db).catch(e => console.error("Error Duel:", e.message));
             await bolaCmd(command, args, msg, user, db, sender).catch(e => console.error("Error Bola:", e.message));
-            await nationCmd(command, args, msg, user, db).catch(e => console.error("Error Nation:", e.message));
+            await nationCmd(command, args, msg, user, db, sock).catch(e => console.error("Error Nation:", e.message));
             await robCmd(command, args, msg, user, db, sock).catch(e => console.error("Error Rob:", e.message));
             await valasCmd(command, args, msg, user, db).catch(e => console.error("Error Valas:", e.message));
             await farmingCmd(command, args, msg, user, db).catch(e => console.error("Error Farming:", e.message));
@@ -1663,39 +1663,440 @@ ${'─'.repeat(30)}
                 }
 
                 // ════════════════════════════════════════════════
-                //  !menu negara
+                //  !menu negara  (TERMUTAKHIR v3.0)
                 // ════════════════════════════════════════════════
-                if (['negara', 'war', 'perang', 'nation'].includes(sub)) {
+                if (['negara', 'war', 'perang', 'nation', 'spy', 'spion'].includes(sub)) {
+                    // Sub-menu lanjutan
+                    const sub2 = (args[1] || '').toLowerCase();
+
+                    // !menu negara infra — Detail bangunan
+                    if (['infra','bangunan','infrastruktur','bangun'].includes(sub2)) {
+                        return msg.reply(
+`🏗️ *PANDUAN INFRASTRUKTUR LENGKAP*
+${'─'.repeat(32)}
+
+📌 _Harga naik setiap level! Level 1 = harga dasar, Level 2 = 2x, dst._
+
+🏦 *bank* — Bank Sentral (Maks Lv.5)
+   Dasar: Rp 10.000.000.000
+   ✅ Pajak +15% per level
+   ✅ Kombinasikan dengan \`kilang\` untuk pajak maksimal
+
+🏰 *benteng* — Benteng Pertahanan (Maks Lv.5)
+   Dasar: Rp 25.000.000.000
+   ✅ Defense +25% per level dari jumlah tentara
+   ✅ Wajib dimiliki sebelum perang!
+
+🏥 *rs* — Rumah Sakit (Maks Lv.5)
+   Dasar: Rp 5.000.000.000
+   ✅ Populasi tumbuh +2% per level per sesi pajak
+   ✅ Kurangi korban sipil saat diserang
+
+🕵️ *intel* — Markas Intelijen (Maks Lv.3)
+   Dasar: Rp 15.000.000.000
+   ✅ Buka SEMUA fitur spionase rahasia
+   ✅ Tangkap agen musuh: +10% per level
+   ⚠️ WAJIB untuk misi rahasia via DM bot!
+
+🚀 *silo* — Silo Rudal (Maks Lv.2)
+   Dasar: Rp 50.000.000.000
+   ✅ Buka produksi rudal (\`!bangunrudal\`)
+   ✅ Buka serangan udara (\`!serangangudara\`)
+
+📡 *radar* — Radar Anti-Rudal (Maks Lv.3)
+   Dasar: Rp 30.000.000.000
+   ✅ Tangkis rudal musuh 15% per level
+   ✅ Kurangi efek sabotase dari agen musuh
+
+☢️  *nuklir* — Lab Nuklir (Maks Lv.1)
+   Dasar: Rp 80.000.000.000
+   ✅ Produksi bom nuklir (\`!bangunbom\`)
+   ✅ Rudal biasa +50% damage
+
+🏭 *kilang* — Kilang Industri (Maks Lv.3)
+   Dasar: Rp 20.000.000.000
+   ✅ Pajak +10% per level
+   ✅ Populasi tumbuh lebih cepat
+
+⚓ *dermaga* — Dermaga Militer (Maks Lv.2)
+   Dasar: Rp 35.000.000.000
+   ✅ Buka fitur Blokade Ekonomi
+   ✅ Bonus serangan +10%
+
+🎓 *univ* — Universitas Riset (Maks Lv.2)
+   Dasar: Rp 12.000.000.000
+   ✅ Buka menu \`!riset\` teknologi canggih
+
+🌿 *kebun* — Kebun Rakyat (Maks Lv.5)
+   Dasar: Rp 3.000.000.000
+   ✅ Stabilitas +1 per jam otomatis per level
+   ✅ Paling murah, wajib untuk menjaga ketenangan
+
+⛓️  *penjara* — Penjara Negara (Maks Lv.2)
+   Dasar: Rp 8.000.000.000
+   ✅ Tangkap agen musuh +20% per level
+   ✅ Kurangi efek teror dari spionase
+
+${'─'.repeat(32)}
+🛠️ \`!bangun <kode>\`     Bangun/upgrade
+🔨 \`!demolish <kode>\`   Bongkar (refund 50%)
+↩️ Balik: \`!menu negara\``
+                        );
+                    }
+
+                    // !menu negara militer — Detail militer
+                    if (['militer','perang','war','senjata'].includes(sub2)) {
+                        return msg.reply(
+`⚔️ *PANDUAN MILITER & PERANG LENGKAP*
+${'─'.repeat(32)}
+
+🪖 *REKRUTMEN TENTARA*
+• !rekrut <jumlah>      → Rekrut tentara (Rp 50 Juta/orang)
+• !demobilisasi <jml>   → Bubarkan tentara (refund 40%)
+
+⚔️ *JENIS SERANGAN*
+
+1️⃣ *Serangan Darat* — \`!serang @user\`
+   • Pertempuran tentara vs tentara
+   • Benteng meningkatkan pertahanan musuh
+   • Menang: Rampas 30–50% kas + hancurkan bangunan
+   • Kalah: Rugi logistik 5–13% kas
+   • Cooldown: 30 menit
+
+2️⃣ *Serangan Udara* — \`!serangangudara @user\`
+   • Butuh Silo Rudal + minimal 1 rudal
+   • Rudal bisa ditangkis oleh Radar musuh (15%/lv)
+   • Damage: +20–50% lebih besar dari darat
+   • Hancurkan bangunan musuh dengan probabilitas tinggi
+   • Gunakan \`!serangangudara @user nuklir\` untuk bom nuklir!
+
+☢️ *BOM NUKLIR* — \`!serangangudara @user nuklir\`
+   • Damage 3x lipat dari rudal biasa
+   • 80% chance hancurkan 2 level bangunan
+   • Bypass radar pertahanan musuh
+   • MAKSIMAL 3 bom, butuh Lab Nuklir + Silo
+
+⛔ *BLOKADE EKONOMI* — \`!blokade @user\`
+   • Bukan serangan langsung, tapi mematikan ekonomi
+   • Pajak musuh berkurang 50% selama 4 jam
+   • Butuh: Dermaga Militer + Rp 2 Miliar
+   • Cooldown: 2 jam
+
+🛡️ *PERTAHANAN*
+
+• !perisai             → Aktifkan perisai 2 jam (Rp 5 Miliar)
+  ✅ Kebal: serangan darat, udara, blokade, sabotase
+• !bangun benteng      → Defense passif +25%/lv
+• !bangun radar        → Tangkis rudal 15%/lv
+• !bangun penjara      → Tangkap agen musuh
+
+📊 *FORMULA KEKUATAN (Power Rating)*
+\`Power = Tentara × (1 + 0.25×Benteng) × (1 + 0.10×Dermaga)\`
++ bonus Riset Armor Baja +15% jika sudah diriset
+
+💡 *TIPS STRATEGI*
+✅ Lakukan \`!spionase\` (DM bot) sebelum menyerang!
+✅ Gunakan \`!serangangudara\` untuk bypass Benteng musuh
+✅ Blokade musuh sambil kuatkan ekonomimu sendiri
+✅ Aliansi = +20% power pertahanan dari sekutu!
+✅ Perisai wajib jika kas negara besar & lagi tidak online
+
+${'─'.repeat(32)}
+↩️ Balik: \`!menu negara\``
+                        );
+                    }
+
+                    // !menu negara ekonomi
+                    if (['ekonomi','uang','kas','pajak'].includes(sub2)) {
+                        return msg.reply(
+`💰 *PANDUAN EKONOMI NEGARA LENGKAP*
+${'─'.repeat(32)}
+
+📋 *SUMBER PENDAPATAN*
+
+1️⃣ \`!pajaknegara\` — Pajak Rakyat (Cooldown: 1 jam)
+   Formula: Populasi × Rp 100.000 × Bonus Bank × Bonus Kilang
+   Riset Ekonomi Maju = tambahan +25%
+   ⚠️ Blokade aktif = pajak -50%
+   ⚠️ Stabilitas < 20% = tidak bisa pungut pajak!
+
+2️⃣ \`!serang @user\` — Rampas kas musuh (30–50%)
+
+3️⃣ \`!serangangudara @user\` — Rampas + hancurkan bangunan
+
+💸 *PENGELUARAN*
+• Rekrut tentara: Rp 50 Juta/orang
+• Bangun infrastruktur: Rp 3M–80M per lv
+• Bangun rudal: Rp 20 Miliar/unit
+• Bangun bom nuklir: Rp 100 Miliar/unit
+• Perisai: Rp 5 Miliar (2 jam)
+• Propaganda: Rp 500 Juta (stabilitas +10–25%)
+• Blokade musuh: Rp 2 Miliar
+• Gencatan senjata: Rp 1 Miliar
+• Sensus negara: Rp 100 Juta
+• Rename negara: Rp 1 Miliar
+
+🏦 *KELOLA KAS*
+• !subsidi <jml/all>   → Pribadi → Kas (stabilitas +3%)
+• !tarikkas <jml/all>  → Kas → Pribadi (pajak -10%)
+• !korupsi <jml/all>   → Kas → Pribadi (stabilitas -5–20%)
+  ⚠️ Korupsi terlalu besar = REVOLUSI RAKYAT!
+
+📈 *CARA MAKSIMALKAN PAJAK*
+Bank Lv.5 (+75%) + Kilang Lv.3 (+30%) + Riset Ekonomi (+25%)
+= Total bonus pajak hingga +130% dari basis!
+
+🌿 *JAGA STABILITAS RAKYAT*
+• Stabilitas turun = pajak terganggu, ada risiko revolusi
+• Cara naikkan: !propaganda | !subsidi | !bangun kebun
+• Kebun = +1 stab/jam/level otomatis tanpa biaya tambahan!
+
+${'─'.repeat(32)}
+↩️ Balik: \`!menu negara\``
+                        );
+                    }
+
+                    // !menu negara spion — Panduan spionase
+                    if (['spion','intel','rahasia','spy','mata','agen'].includes(sub2)) {
+                        return msg.reply(
+`🕵️ *PANDUAN SPIONASE RAHASIA*
+${'─'.repeat(32)}
+
+⚠️ *PENTING: SEMUA COMMAND SPIONASE HANYA DI DM BOT!*
+Mengetik di grup = ketahuan lawan!
+
+📋 *SYARAT SPIONASE*
+1. Punya negara (buat: \`!buatnegara\`)
+2. Bangun Markas Intelijen: \`!bangun intel\`
+3. Chat LANGSUNG ke nomor bot secara pribadi
+
+🔒 *DAFTAR MISI RAHASIA (via DM)*
+
+🔍 \`!spionase @user\` — Intai Musuh
+   Biaya: Rp 500 Juta | Sukses: 75%
+   Hasil: Data LENGKAP (kas, tentara, rudal, bom, riset, aliansi)
+
+📡 \`!sadap @user\` — Penyadapan
+   Biaya: Rp 800 Juta | Sukses: 60%
+   Hasil: Jaringan aliansi, history perang, bangunan detail
+
+💣 \`!sabotase @user\` — Sabotase Bangunan
+   Biaya: Rp 1,5 Miliar | Sukses: 50%
+   Hasil: Turunkan 1 level bangunan acak musuh
+
+💥 \`!teror @user\` — Operasi Teror
+   Biaya: Rp 1 Miliar | Sukses: 55%
+   Hasil: Stabilitas musuh -10–35%
+
+👑 \`!kudeta @user\` — Picu Kudeta (Intel Lv.2+)
+   Biaya: Rp 3 Miliar | Sukses: 30%
+   Hasil: Def -20%, Kas -15%, Stab -20–50%
+   🔥 Jika stabilitas target = 0: Negara HANCUR!
+
+☠️  \`!racun @user\` — Operasi Racun (Intel Lv.2+)
+   Biaya: Rp 2 Miliar | Sukses: 40%
+   Hasil: Bunuh 10–20% tentara musuh diam-diam
+   🧬 Combo Riset Bio-weapon = damage 2x!
+
+💰 \`!suap @user\` — Suap Jenderal (Intel Lv.2+)
+   Biaya: Rp 2,5 Miliar | Sukses: 35%
+   Hasil: 5–13% tentara musuh membelot ke kita
+
+💸 \`!curi @user\` — Curi Kas (Intel Lv.1)
+   Biaya: Rp 1,2 Miliar | Sukses: 45%
+   Hasil: Curi 5–13% kas musuh langsung ke kasmu
+
+📋 *COMMAND LAPORAN (via DM)*
+• \`!laporanmata\`       → 7 laporan misi terakhir
+• \`!identitasagen\`     → Statistik operasi & profile agen
+• \`!tarikagen\`         → Hentikan semua operasi aktif
+
+🔐 *SISTEM KEAMANAN (COUNTER-INTEL)*
+• Target punya Intel = ada chance agen TERTANGKAP
+  (8% per level Intel + 10% per level Penjara)
+• Jika tertangkap: biaya hangus + denda 5% kas
+• Target dapat notif samar, identitasmu TIDAK bocor
+
+💡 *TIPS SPIONASE*
+✅ \`!spionase\` dulu sebelum misi lain agar tahu state musuh
+✅ Riset \`agen_elite\` = sukses rate +15% semua misi
+✅ Serang saat stabilitas musuh sudah rendah (efek teror)
+✅ Cooldown antar misi: 15 menit
+
+${'─'.repeat(32)}
+↩️ Balik: \`!menu negara\``
+                        );
+                    }
+
+                    // !menu negara riset — Panduan teknologi
+                    if (['riset','teknologi','tech','research'].includes(sub2)) {
+                        return msg.reply(
+`🔬 *PANDUAN RISET TEKNOLOGI*
+${'─'.repeat(32)}
+
+📋 *SYARAT*
+• Bangun Universitas Riset: \`!bangun univ\`
+• Gunakan \`!riset <kode>\` untuk meneliti
+
+🎯 *DAFTAR TEKNOLOGI (Univ Lv.1)*
+
+🎯 \`rudal_pintar\` — Rudal Pintar
+   Biaya: Rp 10 Miliar
+   ✅ Rudal 30% lebih akurat + damage +45%
+
+🕵️‍♂️ \`agen_elite\` — Agen Elite
+   Biaya: Rp 15 Miliar
+   ✅ Semua misi spionase +15% chance sukses
+
+💹 \`ekonomi_maju\` — Ekonomi Maju
+   Biaya: Rp 20 Miliar
+   ✅ Bonus pajak +25% di atas semua multiplier
+
+🛡️ *TEKNOLOGI LANJUTAN (Univ Lv.2)*
+
+🛡️ \`armor_baja\` — Armor Baja
+   Biaya: Rp 25 Miliar
+   ✅ Defense pasif +15% (masuk formula Power Rating)
+
+🛸 \`drone_serang\` — Drone Serang
+   Biaya: Rp 30 Miliar
+   ✅ Kerugian tentaramu di serangan darat -20%
+
+🧬 \`bioweapon\` — Bio-weapon
+   Biaya: Rp 50 Miliar
+   ✅ Misi \`!racun\` = 2x lebih mematikan
+
+💡 *TIPS RISET*
+✅ Prioritas pertama: \`ekonomi_maju\` (langsung balik modal)
+✅ Jika sering spionase: \`agen_elite\` wajib dimiliki
+✅ Jika sering perang: \`armor_baja\` + \`drone_serang\`
+✅ Riset permanen — tidak perlu diperpanjang!
+
+${'─'.repeat(32)}
+↩️ Balik: \`!menu negara\``
+                        );
+                    }
+
+                    // !menu negara aliansi
+                    if (['aliansi','sekutu','diplomasi','damai'].includes(sub2)) {
+                        return msg.reply(
+`🤝 *PANDUAN DIPLOMASI & ALIANSI*
+${'─'.repeat(32)}
+
+🤝 *SISTEM ALIANSI*
+• Maksimal 3 aliansi aktif per negara
+• Sekutu menyumbang +20% power saat kamu diserang
+• Tidak bisa saling menyerang sesama sekutu
+
+📋 *COMMAND ALIANSI*
+• !aliansi @user         → Kirim tawaran aliansi
+• !terimaliansi @user    → Terima tawaran
+• !tolaklansi @user      → Tolak tawaran
+• !listaliansi           → Lihat daftar sekutu
+• !bubaraliansi @user    → Putuskan aliansi (DM ke target)
+
+🕊️ *GENCATAN SENJATA*
+• !gencatan @user        → Tawarkan gencatan (Rp 1 Miliar)
+• !terimagencatan @user  → Terima gencatan
+• Efek: Dilarang saling serang 24 jam
+• Berguna: Jika negaramu lemah & butuh waktu pulih
+
+📊 *STRATEGI ALIANSI*
+Skenario terbaik: 3 sekutu kuat = power bertahan naik 60%
+
+💡 *TIPS DIPLOMASI*
+✅ Aliansi dengan negara kuat = tameng gratis
+✅ Gencatan = beli waktu untuk rebuild pasca kalah perang
+✅ Pantau \`!topnegara\` untuk cari kandidat sekutu ideal
+✅ Aliansi bisa diputus kapan saja, tapi relasi bisa rusak!
+
+${'─'.repeat(32)}
+↩️ Balik: \`!menu negara\``
+                        );
+                    }
+
+                    // Menu utama negara (default)
                     return msg.reply(
-`🏳️ *NEGARA & PERANG*
-${'─'.repeat(30)}
+`🌍 *SISTEM NATION v3.0 — PANDUAN LENGKAP*
+${'═'.repeat(32)}
 
-🌏 *KELOLA NEGARA*
-• !negara / !nation   → Dashboard negara kamu
-• !buatnegara <nama>  → Buat negara baru
-  _(Biaya 5 Miliar! Pastikan kamu cukup kaya)_
-• !listnegara         → Daftar semua negara yang ada
-• !topnegara          → Ranking negara terkuat
+🏛️ *KELOLA NEGARA*
+• !negara / !nation       → Dashboard lengkap negaramu
+• !buatnegara <nama>      → Dirikan negara (Rp 5 Miliar)
+• !topnegara              → Peta kekuatan semua negara
+• !statsnegara @user      → Intel publik negara lain (terbatas)
+• !sensus                 → Laporan statistik negaramu (Rp 100 Juta)
+• !renamekan <nama>       → Ganti nama negara (Rp 1 Miliar)
 
-🏗️ *PEMBANGUNAN INFRASTRUKTUR*
-• !bangun bank        → Naikkan kapasitas pajak (10 Juta)
-• !bangun benteng     → Tingkatkan pertahanan (25 Juta)
-• !bangun rs          → Kurangi korban saat perang (5 Juta)
-  _(Infrastruktur kuat = negara lebih sulit diserang)_
+🏗️ *INFRASTRUKTUR*
+• !bangun [kode]          → Katalog & bangun infrastruktur
+• !demolish [kode]        → Bongkar bangunan (refund 50%)
+  _12 jenis bangunan | Harga naik tiap level!_
 
-⚔️ *MILITER & PERANG*
-• !rekrut <jml>       → Beli tentara (50 Juta/orang)
-• !serang @target     → Deklarasi perang ke negara lain
-  _(Perang buta — kekuatan tentara menentukan hasil)_
-  ⚠️ _Kalah perang = kas negara dirampas musuh!_
+🔬 *TEKNOLOGI*
+• !riset [kode]           → Katalog & beli riset teknologi
+  _6 teknologi permanent | Butuh Universitas_
 
-💰 *EKONOMI NEGARA*
-• !pajaknegara        → Tarik pajak dari seluruh rakyat
-• !subsidi <jml>      → Transfer uang pribadi → kas negara
-• !korupsi <jml>      → Ambil uang dari kas
-  ⚠️ _Korupsi berlebihan = rakyat memberontak (kudeta)!_
+🪖 *MILITER*
+• !rekrut <jml>           → Rekrut tentara (Rp 50 Juta/org)
+• !demobilisasi <jml>     → Bubarkan tentara (refund 40%)
+• !bangunrudal            → Produksi rudal (Rp 20 Miliar/unit)
+• !bangunbom              → Produksi bom nuklir (Rp 100 Miliar)
 
-${'─'.repeat(30)}
+⚔️ *SERANGAN*
+• !serang @user           → Serangan darat (CD: 30 menit)
+• !serangangudara @user   → Serangan rudal/nuklir
+• !blokade @user          → Blokade ekonomi 4 jam
+
+🛡️ *PERTAHANAN*
+• !perisai                → Aktifkan perisai 2 jam (Rp 5 Miliar)
+
+💰 *EKONOMI*
+• !pajaknegara            → Pungut pajak rakyat (CD: 1 jam)
+• !subsidi <jml/all>      → Isi kas negara
+• !tarikkas <jml/all>     → Tarik kas ke dompet pribadi
+• !korupsi <jml/all>      → Korupsi! (risiko revolusi)
+• !propaganda             → Tenangkan rakyat (Rp 500 Juta)
+
+🤝 *DIPLOMASI*
+• !aliansi @user          → Ajukan aliansi (maks 3)
+• !terimaliansi @user     → Terima aliansi
+• !bubaraliansi @user     → Putuskan aliansi
+• !listaliansi            → Lihat sekutu aktif
+• !gencatan @user         → Tawari gencatan (Rp 1 Miliar)
+• !terimagencatan @user   → Terima gencatan (24 jam)
+
+🔒 *SPIONASE RAHASIA*
+  ⚠️ _Hanya di chat PRIBADI ke nomor bot!_
+• !spionase @user         → Intai data lengkap musuh (75%)
+• !sadap @user            → Sadap aliansi & aktivitas (60%)
+• !sabotase @user         → Hancurkan bangunan musuh (50%)
+• !teror @user            → Semai kerusuhan (55%)
+• !kudeta @user           → Picu pemberontakan (30%)
+• !racun @user            → Bunuh tentara diam-diam (40%)
+• !suap @user             → Suap jenderal musuh (35%)
+• !curi @user             → Curi dari kas negara (45%)
+• !laporanmata            → Laporan semua misi
+• !identitasagen          → Profil & statistik agenmu
+• !tarikagen              → Hentikan semua operasi
+
+${'─'.repeat(32)}
+📖 *PANDUAN DETAIL:*
+• \`!menu negara infra\`    → Panduan bangunan lengkap
+• \`!menu negara militer\`  → Panduan perang & senjata
+• \`!menu negara ekonomi\`  → Panduan ekonomi & pajak
+• \`!menu negara spion\`    → Panduan spionase rahasia
+• \`!menu negara riset\`    → Panduan teknologi
+• \`!menu negara aliansi\`  → Panduan diplomasi
+
+${'─'.repeat(32)}
+💡 *TIPS AWAL:*
+✅ Buat negara → Isi kas → Bangun bank & benteng
+✅ Rekrut tentara sebelum diserang siapapun
+✅ Bangun intel → chat bot secara pribadi untuk spionase
+✅ Cari sekutu kuat sebelum mulai berperang
+✅ Perisai wajib jika sering offline!
+
 ↩️ Balik: *!menu*`
                     );
                 }
