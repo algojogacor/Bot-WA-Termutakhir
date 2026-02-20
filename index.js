@@ -290,16 +290,19 @@ async function startBot() {
             
             // ==========================================================
 // ==========================================================
-// SECURITY CHECK
+// SECURITY CHECK (REVISI)
 // ==========================================================
 if (chat.isGroup) {
-    // 1. Jika pesan dari GRUP, biarkan lewat.
-    // Fitur cek ID Grup tetap aktif:
+    // 1. Jika pesan dari GRUP: Cek apakah grup terdaftar di Whitelist
     if (msg.body === '!idgrup') return msg.reply(`🆔 *ID GRUP:* \`${chat.id._serialized}\``);
+    if (!ALLOWED_GROUPS.includes(chat.id._serialized)) return; // Blokir grup asing
+} else {
+    // 2. Jika pesan dari PRIVATE CHAT (DM):
+    // Biarkan lolos agar fitur seperti Spionase (!spionase, !kudeta) bisa berjalan.
+    
+    // Opsional: Jika kamu ingin bot hanya merespon command tertentu di DM,
+    // kamu bisa tambahkan filternya nanti di dalam file command masing-masing.
 }
-
-// 2. Jika pesan dari PRIVATE CHAT (DM), kode akan otomatis lanjut ke bawah.
-// Fitur rahasia seperti !spionase dan !kudeta sekarang aman dan bisa berjalan!
 
             // ==========================================================
             //  DATABASE & LOGIKA USER
