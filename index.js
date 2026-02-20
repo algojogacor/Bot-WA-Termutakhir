@@ -526,7 +526,7 @@ async function startBot() {
             await cryptoCmd(command, args, msg, user, db).catch(e => console.error("Error Crypto:", e.message));
             await propertyCmd(command, args, msg, user, db).catch(e => console.error("Error Property:", e.message));
             await minesCmd(command, args, msg, user, db).catch(e => console.error("Error Mines:", e.message));
-            await miningCmd(command, args, msg, user, db).catch(e => console.error("Error Mining:", e.message));
+            await miningCmd(command, args, msg, user, db, sock).catch(e => console.error("Error Mining:", e.message));
             await duelCmd(command, args, msg, user, db).catch(e => console.error("Error Duel:", e.message));
             await bolaCmd(command, args, msg, user, db, sender).catch(e => console.error("Error Bola:", e.message));
             await nationCmd(command, args, msg, user, db).catch(e => console.error("Error Nation:", e.message));
