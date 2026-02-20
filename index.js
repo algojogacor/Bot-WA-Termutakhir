@@ -287,10 +287,19 @@ async function startBot() {
                 message: m.message,
                 extendedTextMessage: m.message.extendedTextMessage
             };
-            // SECURITY CHECK
-            if (!chat.isGroup) return; // Hanya respon di grup
-            if (msg.body === '!idgrup') return msg.reply(`🆔 *ID GRUP:* \`${chat.id._serialized}\``);
-            if (!ALLOWED_GROUPS.includes(chat.id._serialized)) return;
+            
+            // ==========================================================
+// ==========================================================
+// SECURITY CHECK
+// ==========================================================
+if (chat.isGroup) {
+    // 1. Jika pesan dari GRUP, biarkan lewat.
+    // Fitur cek ID Grup tetap aktif:
+    if (msg.body === '!idgrup') return msg.reply(`🆔 *ID GRUP:* \`${chat.id._serialized}\``);
+}
+
+// 2. Jika pesan dari PRIVATE CHAT (DM), kode akan otomatis lanjut ke bawah.
+// Fitur rahasia seperti !spionase dan !kudeta sekarang aman dan bisa berjalan!
 
             // ==========================================================
             //  DATABASE & LOGIKA USER
