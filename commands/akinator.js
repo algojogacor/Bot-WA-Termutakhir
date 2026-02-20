@@ -54,7 +54,7 @@ PANTANGAN:
     const response = await client.chat.completions.create({
         model: 'google/gemini-2.5-flash',
         messages,
-        max_tokens: 800,
+        max_tokens: 5000,
         temperature: 0.3 // Temperature rendah agar logikanya konsisten dan tidak melantur
     });
 
